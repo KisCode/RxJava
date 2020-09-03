@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -15,10 +15,15 @@
  */
 package rx.functions;
 
+import rx.exceptions.OnErrorNotImplementedException;
+
 /**
  * Utility class for the Action interfaces.
  */
 public final class Actions {
+    @SuppressWarnings("rawtypes")
+    private static final EmptyAction EMPTY_ACTION = new EmptyAction();
+
     private Actions() {
         throw new IllegalStateException("No instances!");
     }
@@ -28,10 +33,7 @@ public final class Actions {
         return EMPTY_ACTION;
     }
 
-    @SuppressWarnings("rawtypes")
-    private static final EmptyAction EMPTY_ACTION = new EmptyAction();
-
-    private static final class EmptyAction<T0, T1, T2, T3, T4, T5, T6, T7, T8> implements
+    static final class EmptyAction<T0, T1, T2, T3, T4, T5, T6, T7, T8> implements
             Action0,
             Action1<T0>,
             Action2<T0, T1>,
@@ -43,57 +45,66 @@ public final class Actions {
             Action8<T0, T1, T2, T3, T4, T5, T6, T7>,
             Action9<T0, T1, T2, T3, T4, T5, T6, T7, T8>,
             ActionN {
-        EmptyAction() {
-        }
 
         @Override
         public void call() {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4, T4 t5) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4, T4 t5, T5 t6) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4, T4 t5, T5 t6, T6 t7) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4, T4 t5, T5 t6, T6 t7, T7 t8) {
+            // deliberately no op
         }
 
         @Override
         public void call(T0 t1, T1 t2, T2 t3, T3 t4, T4 t5, T5 t6, T6 t7, T7 t8, T8 t9) {
+            // deliberately no op
         }
 
         @Override
         public void call(Object... args) {
+            // deliberately no op
         }
     }
-    
+
     /**
      * Converts an {@link Action0} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param action
      *            the {@link Action0} to convert
      * @return a {@link Func0} that calls {@code action} and returns {@code null}
@@ -104,7 +115,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action1} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param action
      *            the {@link Action1} to convert
@@ -116,7 +127,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action2} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param action
@@ -129,7 +140,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action3} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -143,7 +154,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action4} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -158,7 +169,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action5} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -175,7 +186,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action6} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -193,7 +204,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action7} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -212,7 +223,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action8} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -220,7 +231,7 @@ public final class Actions {
      * @param <T5> the fifth argument type
      * @param <T6> the sixth argument type
      * @param <T7> the seventh argument type
-     * @param <T8> the eigth argument type
+     * @param <T8> the eighth argument type
      * @param action
      *            the {@link Action8} to convert
      * @return a {@link Func8} that calls {@code action} and returns {@code null}
@@ -232,7 +243,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action9} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -240,7 +251,7 @@ public final class Actions {
      * @param <T5> the fifth argument type
      * @param <T6> the sixth argument type
      * @param <T7> the seventh argument type
-     * @param <T8> the eigth argument type
+     * @param <T8> the eighth argument type
      * @param <T9> the ninth argument type
      * @param action
      *            the {@link Action9} to convert
@@ -253,7 +264,7 @@ public final class Actions {
 
     /**
      * Converts an {@link ActionN} to a function that calls the action and returns {@code null}.
-     * 
+     *
      * @param action
      *            the {@link ActionN} to convert
      * @return a {@link FuncN} that calls {@code action} and returns {@code null}
@@ -265,7 +276,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action0} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <R> the result type
      * @param action
      *            the {@link Action0} to convert
@@ -285,7 +296,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action1} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <R> the result type
      * @param action
@@ -306,7 +317,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action2} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <R> the result type
@@ -328,7 +339,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action3} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -351,7 +362,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action4} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -375,7 +386,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action5} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -401,7 +412,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action6} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -428,7 +439,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action7} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -456,7 +467,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action8} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -464,7 +475,7 @@ public final class Actions {
      * @param <T5> the fifth argument type
      * @param <T6> the sixth argument type
      * @param <T7> the seventh argument type
-     * @param <T8> the eigth argument type
+     * @param <T8> the eighth argument type
      * @param <R> the result type
      * @param action
      *            the {@link Action8} to convert
@@ -485,7 +496,7 @@ public final class Actions {
 
     /**
      * Converts an {@link Action9} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <T1> the first argument type
      * @param <T2> the second argument type
      * @param <T3> the third argument type
@@ -493,7 +504,7 @@ public final class Actions {
      * @param <T5> the fifth argument type
      * @param <T6> the sixth argument type
      * @param <T7> the seventh argument type
-     * @param <T8> the eigth argument type
+     * @param <T8> the eighth argument type
      * @param <T9> the ninth argument type
      * @param <R> the result type
      * @param action
@@ -515,7 +526,7 @@ public final class Actions {
 
     /**
      * Converts an {@link ActionN} to a function that calls the action and returns a specified value.
-     * 
+     *
      * @param <R> the result type
      * @param action
      *            the {@link ActionN} to convert
@@ -533,7 +544,7 @@ public final class Actions {
             }
         };
     }
-    
+
     /**
      * Wraps an Action0 instance into an Action1 instance where the latter calls
      * the former.
@@ -544,17 +555,33 @@ public final class Actions {
     public static <T> Action1<T> toAction1(Action0 action) {
         return new Action1CallsAction0<T>(action);
     }
-    
+
     static final class Action1CallsAction0<T> implements Action1<T> {
         final Action0 action;
-        
+
         public Action1CallsAction0(Action0 action) {
             this.action = action;
         }
-        
+
         @Override
         public void call(T t) {
             action.call();
         }
+    }
+
+    enum NotImplemented implements Action1<Throwable> {
+        INSTANCE;
+        @Override
+        public void call(Throwable t) {
+            throw new OnErrorNotImplementedException(t);
+        }
+    }
+
+    /**
+     * Returns an action which throws OnErrorNotImplementedException.
+     * @return the the shared action
+     */
+    public static Action1<Throwable> errorNotImplemented() {
+        return NotImplemented.INSTANCE;
     }
 }

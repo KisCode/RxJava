@@ -30,6 +30,7 @@ public final class ImmediateScheduler extends Scheduler {
     public static final ImmediateScheduler INSTANCE = new ImmediateScheduler();
 
     private ImmediateScheduler() {
+        // the class is singleton
     }
 
     @Override
@@ -37,7 +38,7 @@ public final class ImmediateScheduler extends Scheduler {
         return new InnerImmediateScheduler();
     }
 
-    private class InnerImmediateScheduler extends Scheduler.Worker implements Subscription {
+    final class InnerImmediateScheduler extends Scheduler.Worker implements Subscription {
 
         final BooleanSubscription innerSubscription = new BooleanSubscription();
 

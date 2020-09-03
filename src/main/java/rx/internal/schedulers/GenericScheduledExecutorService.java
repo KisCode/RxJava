@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +19,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 import rx.Scheduler;
-import rx.internal.util.RxThreadFactory;
 
 /**
  * A default {@link ScheduledExecutorService} that can be used for scheduling actions when a {@link Scheduler} implementation doesn't have that ability.
@@ -32,9 +31,6 @@ import rx.internal.util.RxThreadFactory;
  */
 public final class GenericScheduledExecutorService implements SchedulerLifecycle {
 
-    private static final String THREAD_NAME_PREFIX = "RxScheduledExecutorPool-";
-    private static final RxThreadFactory THREAD_FACTORY = new RxThreadFactory(THREAD_NAME_PREFIX);
-
     private static final ScheduledExecutorService[] NONE = new ScheduledExecutorService[0];
 
     private static final ScheduledExecutorService SHUTDOWN;
@@ -45,12 +41,12 @@ public final class GenericScheduledExecutorService implements SchedulerLifecycle
 
     /* Schedulers needs access to this in order to work with the lifecycle. */
     public final static GenericScheduledExecutorService INSTANCE = new GenericScheduledExecutorService();
-    
+
     private final AtomicReference<ScheduledExecutorService[]> executor;
 
     /** We don't use atomics with this because thread-assignment is random anyway. */
     private static int roundRobin;
-    
+
     private GenericScheduledExecutorService() {
         executor = new AtomicReference<ScheduledExecutorService[]>(NONE);
         start();
@@ -66,13 +62,13 @@ public final class GenericScheduledExecutorService implements SchedulerLifecycle
         if (count > 8) {
             count = 8;
         }
-        
+
         // A multi-threaded executor can reorder tasks, having a set of them
         // and handing one of those out on getInstance() ensures a proper order
-        
+
         ScheduledExecutorService[] execs = new ScheduledExecutorService[count];
         for (int i = 0; i < count; i++) {
-            execs[i] = Executors.newScheduledThreadPool(1, THREAD_FACTORY);
+            execs[i] = GenericScheduledExecutorServiceFactory.create();
         }
         if (executor.compareAndSet(NONE, execs)) {
             for (ScheduledExecutorService exec : execs) {
@@ -88,7 +84,7 @@ public final class GenericScheduledExecutorService implements SchedulerLifecycle
             }
         }
     }
-    
+
     @Override
     public void shutdown() {
         for (;;) {
@@ -105,10 +101,10 @@ public final class GenericScheduledExecutorService implements SchedulerLifecycle
             }
         }
     }
-    
+
     /**
      * Returns one of the single-threaded ScheduledExecutorService helper executors.
-     * 
+     *
      * @return {@link ScheduledExecutorService} for generic use.
      */
     public static ScheduledExecutorService getInstance() {

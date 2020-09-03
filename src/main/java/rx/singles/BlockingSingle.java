@@ -16,16 +16,13 @@
 
 package rx.singles;
 
-import rx.Single;
-import rx.SingleSubscriber;
-import rx.Subscription;
-import rx.annotations.Experimental;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import rx.*;
+import rx.exceptions.Exceptions;
 import rx.internal.operators.BlockingOperatorToFuture;
 import rx.internal.util.BlockingUtils;
-
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@code BlockingSingle} is a blocking "version" of {@link Single} that provides blocking
@@ -33,11 +30,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p/>
  * You construct a {@code BlockingSingle} from a {@code Single} with {@link #from(Single)}
  * or {@link Single#toBlocking()}.
- * 
+ *
  * @param <T> the value type of the sequence
+ * @since 1.3
  */
-@Experimental
-public class BlockingSingle<T> {
+public final class BlockingSingle<T> {
     private final Single<? extends T> single;
 
     private BlockingSingle(Single<? extends T> single) {
@@ -51,7 +48,6 @@ public class BlockingSingle<T> {
      * @param single the {@link Single} you want to convert
      * @return a {@code BlockingSingle} version of {@code single}
      */
-    @Experimental
     public static <T> BlockingSingle<T> from(Single<? extends T> single) {
         return new BlockingSingle<T>(single);
     }
@@ -66,7 +62,6 @@ public class BlockingSingle<T> {
      *
      * @return the value emitted by this {@code BlockingSingle}
      */
-    @Experimental
     public T value() {
         final AtomicReference<T> returnItem = new AtomicReference<T>();
         final AtomicReference<Throwable> returnException = new AtomicReference<Throwable>();
@@ -88,10 +83,7 @@ public class BlockingSingle<T> {
         BlockingUtils.awaitForComplete(latch, subscription);
         Throwable throwable = returnException.get();
         if (throwable != null) {
-            if (throwable instanceof RuntimeException) {
-                throw (RuntimeException) throwable;
-            }
-            throw new RuntimeException(throwable);
+            throw Exceptions.propagate(throwable);
         }
         return returnItem.get();
     }
@@ -102,7 +94,6 @@ public class BlockingSingle<T> {
      * @return a {@link Future} that returns the value
      */
     @SuppressWarnings("unchecked")
-    @Experimental
     public Future<T> toFuture() {
         return BlockingOperatorToFuture.toFuture(((Single<T>)single).toObservable());
     }

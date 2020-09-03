@@ -19,7 +19,7 @@ import rx.Observable.Operator;
 import rx.Subscriber;
 import rx.exceptions.Exceptions;
 import rx.functions.Action0;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaHooks;
 
 /**
  * Registers an action to be called after an Observable invokes {@code onComplete} or {@code onError}.
@@ -28,7 +28,7 @@ import rx.plugins.RxJavaPlugins;
  * <p>
  * See also the <a href="http://msdn.microsoft.com/en-us/library/hh212133.aspx">MSDN Observable.Finally
  * method</a>
- * 
+ *
  * @param <T> the value type
  */
 public final class OperatorDoAfterTerminate<T> implements Operator<T, T> {
@@ -67,16 +67,16 @@ public final class OperatorDoAfterTerminate<T> implements Operator<T, T> {
                     callAction();
                 }
             }
-            
+
             void callAction() {
                 try {
                     action.call();
                 } catch (Throwable ex) {
                     Exceptions.throwIfFatal(ex);
-                    RxJavaPlugins.getInstance().getErrorHandler().handleError(ex);
+                    RxJavaHooks.onError(ex);
                 }
             }
         };
     }
-    
+
 }

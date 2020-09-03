@@ -16,13 +16,10 @@
 
 package rx.operators;
 
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.Param;
-import org.openjdk.jmh.annotations.Scope;
-import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.*;
 
-import rx.internal.operators.OperatorTakeLast;
-import rx.internal.operators.OperatorTakeLastOne;
+import rx.Observable;
+import rx.internal.operators.*;
 import rx.jmh.InputWithIncrementingInteger;
 
 public class OperatorTakeLastOnePerf {
@@ -41,15 +38,15 @@ public class OperatorTakeLastOnePerf {
         }
 
     }
-    
+
     @Benchmark
     public void takeLastOneUsingTakeLast(Input input) {
        input.observable.lift(TAKE_LAST).subscribe(input.observer);
     }
-    
+
     @Benchmark
     public void takeLastOneUsingTakeLastOne(Input input) {
-       input.observable.lift(OperatorTakeLastOne.<Integer>instance()).subscribe(input.observer);
+       Observable.unsafeCreate(new OnSubscribeTakeLastOne<Integer>(input.observable)).subscribe(input.observer);
     }
-    
+
 }

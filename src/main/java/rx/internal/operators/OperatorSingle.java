@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,7 +20,7 @@ import java.util.NoSuchElementException;
 import rx.Observable.Operator;
 import rx.Subscriber;
 import rx.internal.producers.SingleProducer;
-import rx.internal.util.RxJavaPluginUtils;
+import rx.plugins.RxJavaHooks;
 
 /**
  * If the Observable completes after emitting a single item that matches a
@@ -33,14 +33,14 @@ public final class OperatorSingle<T> implements Operator<T, T> {
     private final boolean hasDefaultValue;
     private final T defaultValue;
 
-    private static class Holder {
+    static final class Holder {
         final static OperatorSingle<?> INSTANCE = new OperatorSingle<Object>();
     }
-    
+
     /**
-     * Returns a singleton instance of OperatorSingle (if the stream is empty or has 
+     * Returns a singleton instance of OperatorSingle (if the stream is empty or has
      * more than one element an error will be emitted) that is cast to the generic type.
-     *  
+     *
      * @param <T> the value type
      * @return a singleton instance of an Operator that will emit a single value only unless the stream has zero or more than one element in which case it will emit an error.
      */
@@ -71,16 +71,16 @@ public final class OperatorSingle<T> implements Operator<T, T> {
         return parent;
     }
 
-    private static final class ParentSubscriber<T> extends Subscriber<T> {
+    static final class ParentSubscriber<T> extends Subscriber<T> {
         private final Subscriber<? super T> child;
         private final boolean hasDefaultValue;
         private final T defaultValue;
-        
+
         private T value;
         private boolean isNonEmpty;
         private boolean hasTooManyElements;
 
-        
+
         ParentSubscriber(Subscriber<? super T> child, boolean hasDefaultValue,
                 T defaultValue) {
             this.child = child;
@@ -91,24 +91,21 @@ public final class OperatorSingle<T> implements Operator<T, T> {
 
         @Override
         public void onNext(T value) {
-            if (hasTooManyElements) {
-                return;
-            } else
-            if (isNonEmpty) {
-                hasTooManyElements = true;
-                child.onError(new IllegalArgumentException("Sequence contains too many elements"));
-                unsubscribe();
-            } else {
-                this.value = value;
-                isNonEmpty = true;
+            if (!hasTooManyElements) {
+                if (isNonEmpty) {
+                    hasTooManyElements = true;
+                    child.onError(new IllegalArgumentException("Sequence contains too many elements"));
+                    unsubscribe();
+                } else {
+                    this.value = value;
+                    isNonEmpty = true;
+                }
             }
         }
 
         @Override
         public void onCompleted() {
-            if (hasTooManyElements) {
-                // We have already sent an onError message
-            } else {
+            if (!hasTooManyElements) {
                 if (isNonEmpty) {
                     child.setProducer(new SingleProducer<T>(child, value));
                 } else {
@@ -119,15 +116,16 @@ public final class OperatorSingle<T> implements Operator<T, T> {
                     }
                 }
             }
+            // Otherwise we have already sent an onError message
         }
 
         @Override
         public void onError(Throwable e) {
             if (hasTooManyElements) {
-                RxJavaPluginUtils.handleException(e);
+                RxJavaHooks.onError(e);
                 return;
             }
-            
+
             child.onError(e);
         }
 

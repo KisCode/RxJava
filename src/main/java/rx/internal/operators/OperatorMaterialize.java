@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,11 +17,9 @@ package rx.internal.operators;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import rx.Notification;
+import rx.*;
 import rx.Observable.Operator;
-import rx.Producer;
-import rx.Subscriber;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaHooks;
 
 /**
  * Turns all of the notifications from an Observable into {@code onNext} emissions, and marks
@@ -35,7 +33,7 @@ import rx.plugins.RxJavaPlugins;
 public final class OperatorMaterialize<T> implements Operator<Notification<T>, T> {
 
     /** Lazy initialization via inner-class holder. */
-    private static final class Holder {
+    static final class Holder {
         /** A singleton instance. */
         static final OperatorMaterialize<Object> INSTANCE = new OperatorMaterialize<Object>();
     }
@@ -50,6 +48,7 @@ public final class OperatorMaterialize<T> implements Operator<Notification<T>, T
     }
 
     OperatorMaterialize() {
+        // singleton instances
     }
 
     @Override
@@ -67,16 +66,16 @@ public final class OperatorMaterialize<T> implements Operator<Notification<T>, T
         return parent;
     }
 
-    private static class ParentSubscriber<T> extends Subscriber<T> {
+    static class ParentSubscriber<T> extends Subscriber<T> {
 
         private final Subscriber<? super Notification<T>> child;
 
         private volatile Notification<T> terminalNotification;
-        
+
         // guarded by this
-        private boolean busy = false;
+        private boolean busy;
         // guarded by this
-        private boolean missed = false;
+        private boolean missed;
 
         private final AtomicLong requested = new AtomicLong();
 
@@ -104,7 +103,7 @@ public final class OperatorMaterialize<T> implements Operator<Notification<T>, T
         @Override
         public void onError(Throwable e) {
             terminalNotification = Notification.createOnError(e);
-            RxJavaPlugins.getInstance().getErrorHandler().handleError(e);
+            RxJavaHooks.onError(e);
             drain();
         }
 
@@ -134,7 +133,8 @@ public final class OperatorMaterialize<T> implements Operator<Notification<T>, T
                     // set flag to force extra loop if drain loop running
                     missed = true;
                     return;
-                } 
+                }
+                busy = true;
             }
             // drain loop
             final AtomicLong localRequested = this.requested;

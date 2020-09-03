@@ -16,18 +16,21 @@
 
 package rx.internal.operators;
 
-import rx.Single;
-import rx.SingleSubscriber;
+import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.*;
+
+import rx.*;
 import rx.exceptions.Exceptions;
 import rx.functions.FuncN;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaHooks;
 import rx.subscriptions.CompositeSubscription;
 
-import java.util.NoSuchElementException;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+public final class SingleOperatorZip {
 
-public class SingleOperatorZip {
+    /** Utility class. */
+    private SingleOperatorZip() {
+        throw new IllegalStateException("No instances!");
+    }
 
     public static <T, R> Single<R> zip(final Single<? extends T>[] singles, final FuncN<? extends R> zipper) {
         return Single.create(new Single.OnSubscribe<R>() {
@@ -75,7 +78,7 @@ public class SingleOperatorZip {
                             if (once.compareAndSet(false, true)) {
                                 subscriber.onError(error);
                             } else {
-                                RxJavaPlugins.getInstance().getErrorHandler().handleError(error);
+                                RxJavaHooks.onError(error);
                             }
                         }
                     };

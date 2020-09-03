@@ -16,8 +16,8 @@
 
 package rx.internal.operators;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.Method;
+import java.util.*;
 import java.util.concurrent.atomic.*;
 
 import org.junit.*;
@@ -25,15 +25,17 @@ import org.junit.*;
 import rx.Observable;
 import rx.exceptions.TestException;
 import rx.functions.*;
-import rx.internal.util.RxRingBuffer;
+import rx.internal.util.*;
 import rx.observers.TestSubscriber;
 import rx.schedulers.Schedulers;
 import rx.subjects.PublishSubject;
 
+import static org.junit.Assert.*;
+
 public class OperatorEagerConcatMapTest {
     TestSubscriber<Object> ts;
     TestSubscriber<Object> tsBp;
-    
+
     Func1<Integer, Observable<Integer>> toJust = new Func1<Integer, Observable<Integer>>() {
         @Override
         public Observable<Integer> call(Integer t) {
@@ -53,11 +55,11 @@ public class OperatorEagerConcatMapTest {
         ts = new TestSubscriber<Object>();
         tsBp = new TestSubscriber<Object>(0L);
     }
-    
+
     @Test
     public void testSimple() {
         Observable.range(1, 100).concatMapEager(toJust).subscribe(ts);
-        
+
         ts.assertNoErrors();
         ts.assertValueCount(100);
         ts.assertCompleted();
@@ -66,12 +68,12 @@ public class OperatorEagerConcatMapTest {
     @Test
     public void testSimple2() {
         Observable.range(1, 100).concatMapEager(toRange).subscribe(ts);
-        
+
         ts.assertNoErrors();
         ts.assertValueCount(200);
         ts.assertCompleted();
     }
-    
+
     @Test
     public void testEagerness2() {
         final AtomicInteger count = new AtomicInteger();
@@ -81,21 +83,21 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(2, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
     }
-    
+
     @Test
     public void testEagerness3() {
         final AtomicInteger count = new AtomicInteger();
@@ -105,16 +107,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(3, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -129,16 +131,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(4, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -153,16 +155,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(5, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -177,16 +179,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(6, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -201,16 +203,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(7, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -225,16 +227,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source, source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(8, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -249,16 +251,16 @@ public class OperatorEagerConcatMapTest {
                 count.getAndIncrement();
             }
         });
-        
+
         Observable.concatEager(source, source, source, source, source, source, source, source, source).subscribe(tsBp);
-        
+
         Assert.assertEquals(9, count.get());
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
         tsBp.assertNoValues();
-        
+
         tsBp.requestMore(Long.MAX_VALUE);
-        
+
         tsBp.assertValueCount(count.get());
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
@@ -267,39 +269,39 @@ public class OperatorEagerConcatMapTest {
     @Test
     public void testMainError() {
         Observable.<Integer>error(new TestException()).concatMapEager(toJust).subscribe(ts);
-        
+
         ts.assertNoValues();
         ts.assertError(TestException.class);
         ts.assertNotCompleted();
     }
-    
+
     @Test
     public void testInnerError() {
         Observable.concatEager(Observable.just(1), Observable.error(new TestException())).subscribe(ts);
-        
+
         ts.assertValue(1);
         ts.assertError(TestException.class);
         ts.assertNotCompleted();
     }
-    
+
     @Test
     public void testInnerEmpty() {
         Observable.concatEager(Observable.empty(), Observable.empty()).subscribe(ts);
-        
+
         ts.assertNoValues();
         ts.assertNoErrors();
         ts.assertCompleted();
     }
-    
+
     @Test
     public void testMapperThrows() {
         Observable.just(1).concatMapEager(new Func1<Integer, Observable<Integer>>() {
             @Override
             public Observable<Integer> call(Integer t) {
                 throw new TestException();
-            } 
+            }
         }).subscribe(ts);
-        
+
         ts.assertNoValues();
         ts.assertNotCompleted();
         ts.assertError(TestException.class);
@@ -314,7 +316,7 @@ public class OperatorEagerConcatMapTest {
     public void testInvalidMaxConcurrent() {
         Observable.just(1).concatMapEager(toJust, RxRingBuffer.SIZE, 0);
     }
-    
+
     @Test
     public void testBackpressure() {
         Observable.concatEager(Observable.just(1), Observable.just(1)).subscribe(tsBp);
@@ -322,18 +324,18 @@ public class OperatorEagerConcatMapTest {
         tsBp.assertNoErrors();
         tsBp.assertNoValues();
         tsBp.assertNotCompleted();
-        
+
         tsBp.requestMore(1);
         tsBp.assertValue(1);
         tsBp.assertNoErrors();
         tsBp.assertNotCompleted();
-        
+
         tsBp.requestMore(1);
         tsBp.assertValues(1, 1);
         tsBp.assertNoErrors();
         tsBp.assertCompleted();
     }
-    
+
     @Test
     public void testAsynchronousRun() {
         Observable.range(1, 2).concatMapEager(new Func1<Integer, Observable<Integer>>() {
@@ -342,18 +344,18 @@ public class OperatorEagerConcatMapTest {
                 return Observable.range(1, 1000).subscribeOn(Schedulers.computation());
             }
         }).observeOn(Schedulers.newThread()).subscribe(ts);
-        
+
         ts.awaitTerminalEvent();
         ts.assertNoErrors();
         ts.assertValueCount(2000);
     }
-    
+
     @Test
     public void testReentrantWork() {
         final PublishSubject<Integer> subject = PublishSubject.create();
-        
+
         final AtomicBoolean once = new AtomicBoolean();
-        
+
         subject.concatMapEager(new Func1<Integer, Observable<Integer>>() {
             @Override
             public Observable<Integer> call(Integer t) {
@@ -369,20 +371,20 @@ public class OperatorEagerConcatMapTest {
             }
         })
         .subscribe(ts);
-        
+
         subject.onNext(1);
-        
+
         ts.assertNoErrors();
         ts.assertNotCompleted();
         ts.assertValues(1, 2);
     }
-    
+
     @Test
     public void testPrefetchIsBounded() {
         final AtomicInteger count = new AtomicInteger();
-        
+
         TestSubscriber<Object> ts = TestSubscriber.create(0);
-        
+
         Observable.just(1).concatMapEager(new Func1<Integer, Observable<Integer>>() {
             @Override
             public Observable<Integer> call(Integer t) {
@@ -395,13 +397,13 @@ public class OperatorEagerConcatMapTest {
                         });
             }
         }).subscribe(ts);
-        
+
         ts.assertNoErrors();
         ts.assertNoValues();
         ts.assertNotCompleted();
         Assert.assertEquals(RxRingBuffer.SIZE, count.get());
     }
-    
+
     @Test
     public void testInnerNull() {
         Observable.just(1).concatMapEager(new Func1<Integer, Observable<Integer>>() {
@@ -438,4 +440,91 @@ public class OperatorEagerConcatMapTest {
         Assert.assertEquals(1, (long) requests.get(4));
         Assert.assertEquals(1, (long) requests.get(5));
     }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void many() throws Exception {
+        for (int i = 2; i < 10; i++) {
+            Class<?>[] clazz = new Class[i];
+            Arrays.fill(clazz, Observable.class);
+
+            Observable<Integer>[] obs = new Observable[i];
+            Arrays.fill(obs, Observable.just(1));
+
+            Integer[] expected = new Integer[i];
+            Arrays.fill(expected, 1);
+
+            Method m = Observable.class.getMethod("concatEager", clazz);
+
+            TestSubscriber<Integer> ts = TestSubscriber.create();
+
+            ((Observable<Integer>)m.invoke(null, (Object[])obs)).subscribe(ts);
+
+            ts.assertValues(expected);
+            ts.assertNoErrors();
+            ts.assertCompleted();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void capacityHint() {
+        Observable<Integer> source = Observable.just(1);
+        TestSubscriber<Integer> ts = TestSubscriber.create();
+
+        Observable.concatEager(Arrays.asList(source, source, source), 1).subscribe(ts);
+
+        ts.assertValues(1, 1, 1);
+        ts.assertNoErrors();
+        ts.assertCompleted();
+    }
+
+    @Test
+    public void observable() {
+        Observable<Integer> source = Observable.just(1);
+        TestSubscriber<Integer> ts = TestSubscriber.create();
+
+        Observable.concatEager(Observable.just(source, source, source)).subscribe(ts);
+
+        ts.assertValues(1, 1, 1);
+        ts.assertNoErrors();
+        ts.assertCompleted();
+    }
+
+    @Test
+    public void observableCapacityHint() {
+        Observable<Integer> source = Observable.just(1);
+        TestSubscriber<Integer> ts = TestSubscriber.create();
+
+        Observable.concatEager(Observable.just(source, source, source), 1).subscribe(ts);
+
+        ts.assertValues(1, 1, 1);
+        ts.assertNoErrors();
+        ts.assertCompleted();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void badCapacityHint() throws Exception {
+        Observable<Integer> source = Observable.just(1);
+        try {
+            Observable.concatEager(Arrays.asList(source, source, source), -99);
+        } catch (IllegalArgumentException ex) {
+            assertEquals("capacityHint > 0 required but it was -99", ex.getMessage());
+        }
+
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    @Test
+    public void mappingBadCapacityHint() throws Exception {
+        Observable<Integer> source = Observable.just(1);
+        try {
+            Observable.just(source, source, source).concatMapEager((Func1)UtilityFunctions.identity(), -99, 10);
+        } catch (IllegalArgumentException ex) {
+            assertEquals("capacityHint > 0 required but it was -99", ex.getMessage());
+        }
+
+    }
+
 }

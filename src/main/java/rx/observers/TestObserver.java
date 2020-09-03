@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,13 +24,15 @@ import rx.exceptions.CompositeException;
 /**
  * Observer usable for unit testing to perform assertions, inspect received events or wrap a mocked Observer.
  * @param <T> the observed value type
+ * @deprecated use the {@link TestSubscriber} instead.
  */
+@Deprecated
 public class TestObserver<T> implements Observer<T> {
 
     private final Observer<T> delegate;
-    private final ArrayList<T> onNextEvents = new ArrayList<T>();
-    private final ArrayList<Throwable> onErrorEvents = new ArrayList<Throwable>();
-    private final ArrayList<Notification<T>> onCompletedEvents = new ArrayList<Notification<T>>();
+    private final List<T> onNextEvents = new ArrayList<T>();
+    private final List<Throwable> onErrorEvents = new ArrayList<Throwable>();
+    private final List<Notification<T>> onCompletedEvents = new ArrayList<Notification<T>>();
 
     public TestObserver(Observer<T> delegate) {
         this.delegate = delegate;
@@ -130,8 +132,8 @@ public class TestObserver<T> implements Observer<T> {
                     assertionError("Value at index: " + i + " expected to be [null] but was: [" + actual + "]\n");
                 }
             } else if (!expected.equals(actual)) {
-                assertionError("Value at index: " + i 
-                        + " expected to be [" + expected + "] (" + expected.getClass().getSimpleName() 
+                assertionError("Value at index: " + i
+                        + " expected to be [" + expected + "] (" + expected.getClass().getSimpleName()
                         + ") but was: [" + actual + "] (" + (actual != null ? actual.getClass().getSimpleName() : "null") + ")\n");
 
             }
@@ -158,7 +160,7 @@ public class TestObserver<T> implements Observer<T> {
             assertionError("Received both an onError and onCompleted. Should be one or the other.");
         }
 
-        if (onCompletedEvents.size() == 0 && onErrorEvents.size() == 0) {
+        if (onCompletedEvents.isEmpty() && onErrorEvents.isEmpty()) {
             assertionError("No terminal events received.");
         }
     }
@@ -170,30 +172,29 @@ public class TestObserver<T> implements Observer<T> {
      */
     final void assertionError(String message) {
         StringBuilder b = new StringBuilder(message.length() + 32);
-        
-        b.append(message);
-        
-        
-        b.append(" (");
+
+        b.append(message)
+        .append(" (");
+
         int c = onCompletedEvents.size();
-        b.append(c);
-        b.append(" completion");
+        b.append(c)
+        .append(" completion");
         if (c != 1) {
-            b.append("s");
+            b.append('s');
         }
-        b.append(")");
-        
+        b.append(')');
+
         if (!onErrorEvents.isEmpty()) {
             int size = onErrorEvents.size();
             b.append(" (+")
             .append(size)
             .append(" error");
             if (size != 1) {
-                b.append("s");
+                b.append('s');
             }
-            b.append(")");
+            b.append(')');
         }
-        
+
         AssertionError ae = new AssertionError(b.toString());
         if (!onErrorEvents.isEmpty()) {
             if (onErrorEvents.size() == 1) {
@@ -204,24 +205,24 @@ public class TestObserver<T> implements Observer<T> {
         }
         throw ae;
     }
-    
+
     // do nothing ... including swallowing errors
-    private static Observer<Object> INERT = new Observer<Object>() {
+    private static final Observer<Object> INERT = new Observer<Object>() {
 
         @Override
         public void onCompleted() {
-            
+            // deliberately ignored
         }
 
         @Override
         public void onError(Throwable e) {
-            
+            // deliberately ignored
         }
 
         @Override
         public void onNext(Object t) {
-            
+             // deliberately ignored
         }
-        
+
     };
 }

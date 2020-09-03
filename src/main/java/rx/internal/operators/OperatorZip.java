@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,23 +17,10 @@ package rx.internal.operators;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import rx.Observable;
+import rx.*;
 import rx.Observable.Operator;
-import rx.Observer;
-import rx.Producer;
-import rx.Subscriber;
-import rx.exceptions.Exceptions;
-import rx.exceptions.MissingBackpressureException;
-import rx.functions.Func2;
-import rx.functions.Func3;
-import rx.functions.Func4;
-import rx.functions.Func5;
-import rx.functions.Func6;
-import rx.functions.Func7;
-import rx.functions.Func8;
-import rx.functions.Func9;
-import rx.functions.FuncN;
-import rx.functions.Functions;
+import rx.exceptions.*;
+import rx.functions.*;
 import rx.internal.util.RxRingBuffer;
 import rx.subscriptions.CompositeSubscription;
 
@@ -50,7 +37,7 @@ import rx.subscriptions.CompositeSubscription;
  * <p>
  * The resulting Observable returned from zip will invoke <code>onNext</code> as many times as the
  * number of <code>onNext</code> invocations of the source Observable that emits the fewest items.
- * 
+ *
  * @param <R>
  *            the result type
  */
@@ -115,24 +102,24 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
 
         child.add(subscriber);
         child.setProducer(producer);
-        
+
         return subscriber;
     }
 
     @SuppressWarnings("rawtypes")
-    private final class ZipSubscriber extends Subscriber<Observable[]> {
+    final class ZipSubscriber extends Subscriber<Observable[]> {
 
         final Subscriber<? super R> child;
         final Zip<R> zipper;
         final ZipProducer<R> producer;
+
+        boolean started;
 
         public ZipSubscriber(Subscriber<? super R> child, Zip<R> zipper, ZipProducer<R> producer) {
             this.child = child;
             this.zipper = zipper;
             this.producer = producer;
         }
-
-        boolean started = false;
 
         @Override
         public void onCompleted() {
@@ -159,10 +146,11 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
 
     }
 
-    private static final class ZipProducer<R> extends AtomicLong implements Producer {
+    static final class ZipProducer<R> extends AtomicLong implements Producer {
         /** */
         private static final long serialVersionUID = -1216676403723546796L;
-        private Zip<R> zipper;
+
+        final Zip<R> zipper;
 
         public ZipProducer(Zip<R> zipper) {
             this.zipper = zipper;
@@ -180,13 +168,13 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
     static final class Zip<R> extends AtomicLong {
         /** */
         private static final long serialVersionUID = 5995274816189928317L;
-        
+
         final Observer<? super R> child;
         private final FuncN<? extends R> zipFunction;
         private final CompositeSubscription childSubscription = new CompositeSubscription();
 
         static final int THRESHOLD = (int) (RxRingBuffer.SIZE * 0.7);
-        int emitted = 0; // not volatile/synchronized as accessed inside COUNTER_UPDATER block
+        int emitted; // not volatile/synchronized as accessed inside COUNTER_UPDATER block
 
         /* initialized when started in `start` */
         private volatile Object[] subscribers;
@@ -206,10 +194,10 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
                 subscribers[i] = io;
                 childSubscription.add(io);
             }
-            
+
             this.requested = requested;
             this.subscribers = subscribers; // full memory barrier: release all above
-            
+
             for (int i = 0; i < os.length; i++) {
                 os[i].unsafeSubscribe((InnerSubscriber) subscribers[i]);
             }
@@ -217,10 +205,10 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
 
         /**
          * check if we have values for each and emit if we do
-         * 
+         *
          * This will only allow one thread at a time to do the work, but ensures via `counter` increment/decrement
          * that there is always once who acts on each `tick`. Same concept as used in OperationObserveOn.
-         * 
+         *
          */
         @SuppressWarnings("unchecked")
         void tick() {
@@ -258,7 +246,7 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
                             }
                         }
                         // we only emit if requested > 0 and have all values available
-                        if (requested.get() > 0 && allHaveValues) {
+                        if (allHaveValues && requested.get() > 0) {
                             try {
                                 // all have something so emit
                                 child.onNext(zipFunction.call(vs));
@@ -308,7 +296,7 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
             public void onStart() {
                 request(RxRingBuffer.SIZE);
             }
-            
+
             public void requestMore(long n) {
                 request(n);
             }
@@ -334,7 +322,7 @@ public final class OperatorZip<R> implements Operator<R, Observable<?>[]> {
                 }
                 tick();
             }
-        };
+        }
     }
 
 }

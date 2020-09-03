@@ -16,7 +16,6 @@
 package rx.plugins;
 
 import rx.*;
-import rx.annotations.Experimental;
 import rx.functions.Func1;
 
 /**
@@ -35,22 +34,22 @@ import rx.functions.Func1;
  * should be fast. If anything time-consuming is to be done it should be spawned asynchronously onto separate
  * worker threads.
  *
- * @since (if this graduates from Experimental/Beta to supported, replace this parenthetical with the release number)
+ * @since 1.3
  */
-@Experimental
-public abstract class RxJavaCompletableExecutionHook {
+public abstract class RxJavaCompletableExecutionHook { // NOPMD
     /**
-     * Invoked during the construction by {@link Completable#create(Completable.CompletableOnSubscribe)}
+     * Invoked during the construction by {@link Completable#create(Completable.OnSubscribe)}
      * <p>
      * This can be used to decorate or replace the <code>onSubscribe</code> function or just perform extra
      * logging, metrics and other such things and pass through the function.
      *
      * @param f
-     *            original {@link rx.Completable.CompletableOnSubscribe}<{@code T}> to be executed
-     * @return {@link rx.Completable.CompletableOnSubscribe} function that can be modified, decorated, replaced or just
+     *            original {@link rx.Completable.OnSubscribe}<{@code T}> to be executed
+     * @return {@link rx.Completable.OnSubscribe} function that can be modified, decorated, replaced or just
      *         returned as a pass through
      */
-    public Completable.CompletableOnSubscribe onCreate(Completable.CompletableOnSubscribe f) {
+    @Deprecated
+    public Completable.OnSubscribe onCreate(Completable.OnSubscribe f) {
         return f;
     }
 
@@ -62,11 +61,12 @@ public abstract class RxJavaCompletableExecutionHook {
      *
      * @param completableInstance the target completable instance
      * @param onSubscribe
-     *            original {@link rx.Completable.CompletableOnSubscribe}<{@code T}> to be executed
-     * @return {@link rx.Completable.CompletableOnSubscribe}<{@code T}> function that can be modified, decorated, replaced or just
+     *            original {@link rx.Completable.OnSubscribe}<{@code T}> to be executed
+     * @return {@link rx.Completable.OnSubscribe}<{@code T}> function that can be modified, decorated, replaced or just
      *         returned as a pass through
      */
-    public Completable.CompletableOnSubscribe onSubscribeStart(Completable completableInstance, final Completable.CompletableOnSubscribe onSubscribe) {
+    @Deprecated
+    public Completable.OnSubscribe onSubscribeStart(Completable completableInstance, final Completable.OnSubscribe onSubscribe) {
         // pass through by default
         return onSubscribe;
     }
@@ -81,6 +81,7 @@ public abstract class RxJavaCompletableExecutionHook {
      *            Throwable thrown by {@link Completable#subscribe(Subscriber)}
      * @return Throwable that can be decorated, replaced or just returned as a pass through
      */
+    @Deprecated
     public Throwable onSubscribeError(Throwable e) {
         // pass through by default
         return e;
@@ -90,15 +91,16 @@ public abstract class RxJavaCompletableExecutionHook {
      * Invoked just as the operator functions is called to bind two operations together into a new
      * {@link Completable} and the return value is used as the lifted function
      * <p>
-     * This can be used to decorate or replace the {@link rx.Completable.CompletableOperator} instance or just perform extra
+     * This can be used to decorate or replace the {@link rx.Completable.Operator} instance or just perform extra
      * logging, metrics and other such things and pass through the onSubscribe.
      *
      * @param lift
-     *            original {@link rx.Completable.CompletableOperator}{@code <R, T>}
-     * @return {@link rx.Completable.CompletableOperator}{@code <R, T>} function that can be modified, decorated, replaced or just
+     *            original {@link rx.Completable.Operator}{@code <R, T>}
+     * @return {@link rx.Completable.Operator}{@code <R, T>} function that can be modified, decorated, replaced or just
      *         returned as a pass through
      */
-    public Completable.CompletableOperator onLift(final Completable.CompletableOperator lift) {
+    @Deprecated
+    public Completable.Operator onLift(final Completable.Operator lift) {
         return lift;
     }
 }

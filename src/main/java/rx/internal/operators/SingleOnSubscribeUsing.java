@@ -21,7 +21,7 @@ import java.util.Arrays;
 import rx.*;
 import rx.exceptions.*;
 import rx.functions.*;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaHooks;
 
 /**
  * Generates a resource, derives a Single from it and disposes that resource once the
@@ -32,7 +32,7 @@ import rx.plugins.RxJavaPlugins;
 public final class SingleOnSubscribeUsing<T, Resource> implements Single.OnSubscribe<T> {
     final Func0<Resource> resourceFactory;
     final Func1<? super Resource, ? extends Single<? extends T>> singleFactory;
-    final Action1<? super Resource> disposeAction; 
+    final Action1<? super Resource> disposeAction;
     final boolean disposeEagerly;
 
     public SingleOnSubscribeUsing(Func0<Resource> resourceFactory,
@@ -43,11 +43,11 @@ public final class SingleOnSubscribeUsing<T, Resource> implements Single.OnSubsc
         this.disposeAction = disposeAction;
         this.disposeEagerly = disposeEagerly;
     }
-    
+
     @Override
     public void call(final SingleSubscriber<? super T> child) {
-        final Resource resource;
-        
+        final Resource resource; // NOPMD
+
         try {
             resource = resourceFactory.call();
         } catch (Throwable ex) {
@@ -55,21 +55,21 @@ public final class SingleOnSubscribeUsing<T, Resource> implements Single.OnSubsc
             child.onError(ex);
             return;
         }
-        
+
         Single<? extends T> single;
-        
+
         try {
             single = singleFactory.call(resource);
         } catch (Throwable ex) {
             handleSubscriptionTimeError(child, resource, ex);
             return;
         }
-        
+
         if (single == null) {
             handleSubscriptionTimeError(child, resource, new NullPointerException("The single"));
             return;
         }
-        
+
         SingleSubscriber<T> parent = new SingleSubscriber<T>() {
             @Override
             public void onSuccess(T value) {
@@ -78,31 +78,31 @@ public final class SingleOnSubscribeUsing<T, Resource> implements Single.OnSubsc
                         disposeAction.call(resource);
                     } catch (Throwable ex) {
                         Exceptions.throwIfFatal(ex);
-                        
+
                         child.onError(ex);
                         return;
                     }
                 }
-                
+
                 child.onSuccess(value);
-                
+
                 if (!disposeEagerly) {
                     try {
                         disposeAction.call(resource);
                     } catch (Throwable ex2) {
                         Exceptions.throwIfFatal(ex2);
-                        RxJavaPlugins.getInstance().getErrorHandler().handleError(ex2);
+                        RxJavaHooks.onError(ex2);
                     }
                 }
             }
-            
+
             @Override
             public void onError(Throwable error) {
                 handleSubscriptionTimeError(child, resource, error);
             }
         };
         child.add(parent);
-        
+
         single.subscribe(parent);
     }
 
@@ -117,15 +117,15 @@ public final class SingleOnSubscribeUsing<T, Resource> implements Single.OnSubsc
                 ex = new CompositeException(Arrays.asList(ex, ex2));
             }
         }
-        
+
         t.onError(ex);
-        
+
         if (!disposeEagerly) {
             try {
                 disposeAction.call(resource);
             } catch (Throwable ex2) {
                 Exceptions.throwIfFatal(ex2);
-                RxJavaPlugins.getInstance().getErrorHandler().handleError(ex2);
+                RxJavaHooks.onError(ex2);
             }
         }
     }

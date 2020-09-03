@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,17 +23,17 @@ import rx.Observable.Operator;
 import rx.exceptions.MissingBackpressureException;
 import rx.functions.Action0;
 import rx.internal.schedulers.*;
-import rx.internal.util.*;
+import rx.internal.util.RxRingBuffer;
 import rx.internal.util.atomic.SpscAtomicArrayQueue;
 import rx.internal.util.unsafe.*;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaHooks;
 import rx.schedulers.Schedulers;
 
 /**
  * Delivers events on the specified {@code Scheduler} asynchronously via an unbounded buffer.
- * 
+ *
  * <img width="640" src="https://github.com/ReactiveX/RxJava/wiki/images/rx-operators/observeOn.png" alt="">
- * 
+ *
  * @param <T>
  *            the transmitted value type
  */
@@ -76,7 +76,7 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
             return parent;
         }
     }
-    
+
     public static <T> Operator<T, T> rebatch(final int n) {
         return new Operator<T, T>() {
             @Override
@@ -89,28 +89,27 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
     }
 
     /** Observe through individual queue per observer. */
-    private static final class ObserveOnSubscriber<T> extends Subscriber<T> implements Action0 {
+    static final class ObserveOnSubscriber<T> extends Subscriber<T> implements Action0 {
         final Subscriber<? super T> child;
         final Scheduler.Worker recursiveScheduler;
-        final NotificationLite<T> on;
         final boolean delayError;
         final Queue<Object> queue;
         /** The emission threshold that should trigger a replenishing request. */
         final int limit;
-        
+
         // the status of the current stream
         volatile boolean finished;
 
         final AtomicLong requested = new AtomicLong();
-        
+
         final AtomicLong counter = new AtomicLong();
-        
-        /** 
+
+        /**
          * The single exception if not null, should be written before setting finished (release) and read after
          * reading finished (acquire).
          */
         Throwable error;
-        
+
         /** Remembers how many elements have been emitted before the requests run out. */
         long emitted;
 
@@ -120,7 +119,6 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
             this.child = child;
             this.recursiveScheduler = scheduler.createWorker();
             this.delayError = delayError;
-            this.on = NotificationLite.instance();
             int calculatedSize = (bufferSize > 0) ? bufferSize : RxRingBuffer.SIZE;
             // this formula calculates the 75% of the bufferSize, rounded up to the next integer
             this.limit = calculatedSize - (calculatedSize >> 2);
@@ -132,12 +130,12 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
             // signal that this is an async operator capable of receiving this many
             request(calculatedSize);
         }
-        
+
         void init() {
-            // don't want this code in the constructor because `this` can escape through the 
+            // don't want this code in the constructor because `this` can escape through the
             // setProducer call
             Subscriber<? super T> localChild = child;
-            
+
             localChild.setProducer(new Producer() {
 
                 @Override
@@ -158,7 +156,7 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
             if (isUnsubscribed() || finished) {
                 return;
             }
-            if (!queue.offer(on.next(t))) {
+            if (!queue.offer(NotificationLite.next(t))) {
                 onError(new MissingBackpressureException());
                 return;
             }
@@ -177,7 +175,7 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
         @Override
         public void onError(final Throwable e) {
             if (isUnsubscribed() || finished) {
-                RxJavaPlugins.getInstance().getErrorHandler().handleError(e);
+                RxJavaHooks.onError(e);
                 return;
             }
             error = e;
@@ -202,29 +200,28 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
             // of the constant fields
             final Queue<Object> q = this.queue;
             final Subscriber<? super T> localChild = this.child;
-            final NotificationLite<T> localOn = this.on;
-            
+
             // requested and counter are not included to avoid JIT issues with register spilling
             // and their access is is amortized because they are part of the outer loop which runs
             // less frequently (usually after each bufferSize elements)
-            
+
             for (;;) {
                 long requestAmount = requested.get();
-                
+
                 while (requestAmount != currentEmission) {
                     boolean done = finished;
                     Object v = q.poll();
                     boolean empty = v == null;
-                    
+
                     if (checkTerminated(done, empty, localChild, q)) {
                         return;
                     }
-                    
+
                     if (empty) {
                         break;
                     }
-                    
-                    localChild.onNext(localOn.getValue(v));
+
+                    localChild.onNext(NotificationLite.<T>getValue(v));
 
                     currentEmission++;
                     if (currentEmission == limit) {
@@ -233,7 +230,7 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
                         currentEmission = 0L;
                     }
                 }
-                
+
                 if (requestAmount == currentEmission) {
                     if (checkTerminated(finished, q.isEmpty(), localChild, q)) {
                         return;
@@ -247,13 +244,13 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
                 }
             }
         }
-        
+
         boolean checkTerminated(boolean done, boolean isEmpty, Subscriber<? super T> a, Queue<Object> q) {
             if (a.isUnsubscribed()) {
                 q.clear();
                 return true;
             }
-            
+
             if (done) {
                 if (delayError) {
                     if (isEmpty) {
@@ -288,9 +285,9 @@ public final class OperatorObserveOn<T> implements Operator<T, T> {
                         return true;
                     }
                 }
-                    
+
             }
-            
+
             return false;
         }
     }

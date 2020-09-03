@@ -19,7 +19,7 @@ package rx.internal.operators;
 import rx.*;
 import rx.Observable.OnSubscribe;
 import rx.observers.Subscribers;
-import rx.plugins.*;
+import rx.plugins.RxJavaHooks;
 import rx.subscriptions.*;
 
 /**
@@ -31,38 +31,38 @@ import rx.subscriptions.*;
 public final class OnSubscribeDelaySubscriptionOther<T, U> implements OnSubscribe<T> {
     final Observable<? extends T> main;
     final Observable<U> other;
-    
+
     public OnSubscribeDelaySubscriptionOther(Observable<? extends T> main, Observable<U> other) {
         this.main = main;
         this.other = other;
     }
-    
+
     @Override
     public void call(Subscriber<? super T> t) {
         final SerialSubscription serial = new SerialSubscription();
-        
+
         t.add(serial);
-        
+
         final Subscriber<T> child = Subscribers.wrap(t);
-        
-        
+
+
         Subscriber<U> otherSubscriber = new Subscriber<U>() {
             boolean done;
             @Override
             public void onNext(U t) {
                 onCompleted();
             }
-            
+
             @Override
             public void onError(Throwable e) {
                 if (done) {
-                    RxJavaPlugins.getInstance().getErrorHandler().handleError(e);
+                    RxJavaHooks.onError(e);
                     return;
                 }
                 done = true;
                 child.onError(e);
             }
-            
+
             @Override
             public void onCompleted() {
                 if (done) {
@@ -70,13 +70,13 @@ public final class OnSubscribeDelaySubscriptionOther<T, U> implements OnSubscrib
                 }
                 done = true;
                 serial.set(Subscriptions.unsubscribed());
-                
+
                 main.unsafeSubscribe(child);
             }
         };
-        
+
         serial.set(otherSubscriber);
-        
+
         other.unsafeSubscribe(otherSubscriber);
     }
 }

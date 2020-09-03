@@ -16,15 +16,14 @@
 
 package rx.internal.operators;
 
-import rx.Single;
-import rx.SingleSubscriber;
+import rx.*;
 import rx.exceptions.Exceptions;
 import rx.functions.Func1;
 
-public class SingleOperatorOnErrorResumeNext<T> implements Single.OnSubscribe<T> {
+public final class SingleOperatorOnErrorResumeNext<T> implements Single.OnSubscribe<T> {
 
     private final Single<? extends T> originalSingle;
-    private final Func1<Throwable, ? extends Single<? extends T>> resumeFunctionInCaseOfError;
+    final Func1<Throwable, ? extends Single<? extends T>> resumeFunctionInCaseOfError;
 
     private SingleOperatorOnErrorResumeNext(Single<? extends T> originalSingle, Func1<Throwable, ? extends Single<? extends T>> resumeFunctionInCaseOfError) {
         if (originalSingle == null) {

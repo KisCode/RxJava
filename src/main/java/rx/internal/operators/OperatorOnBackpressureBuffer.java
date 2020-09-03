@@ -1,12 +1,12 @@
 /**
  * Copyright 2014 Netflix, Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,28 +15,25 @@
  */
 package rx.internal.operators;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+import static rx.BackpressureOverflow.ON_OVERFLOW_DEFAULT;
 
-import rx.BackpressureOverflow;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.*;
+
+import rx.*;
+import rx.BackpressureOverflow.Strategy;
 import rx.Observable.Operator;
-import rx.Producer;
-import rx.Subscriber;
-import rx.exceptions.Exceptions;
-import rx.exceptions.MissingBackpressureException;
+import rx.exceptions.*;
 import rx.functions.Action0;
 import rx.internal.util.BackpressureDrainManager;
-
-import static rx.BackpressureOverflow.*;
 
 public class OperatorOnBackpressureBuffer<T> implements Operator<T, T> {
 
     private final Long capacity;
     private final Action0 onOverflow;
-    private final BackpressureOverflow.Strategy overflowStrategy;
+    private final Strategy overflowStrategy;
 
-    private static class Holder {
+    static final class Holder {
         static final OperatorOnBackpressureBuffer<?> INSTANCE = new OperatorOnBackpressureBuffer<Object>();
     }
 
@@ -80,7 +77,7 @@ public class OperatorOnBackpressureBuffer<T> implements Operator<T, T> {
      * @param overflowStrategy the {@code BackpressureOverflow.Strategy} to handle overflows, it must not be null.
      */
     public OperatorOnBackpressureBuffer(long capacity, Action0 onOverflow,
-                                        BackpressureOverflow.Strategy overflowStrategy) {
+                                        Strategy overflowStrategy) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("Buffer capacity must be > 0");
         }
@@ -107,19 +104,18 @@ public class OperatorOnBackpressureBuffer<T> implements Operator<T, T> {
         return parent;
     }
 
-    private static final class BufferSubscriber<T> extends Subscriber<T> implements BackpressureDrainManager.BackpressureQueueCallback {
+    static final class BufferSubscriber<T> extends Subscriber<T> implements BackpressureDrainManager.BackpressureQueueCallback {
         // TODO get a different queue implementation
         private final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<Object>();
         private final AtomicLong capacity;
         private final Subscriber<? super T> child;
         private final AtomicBoolean saturated = new AtomicBoolean(false);
         private final BackpressureDrainManager manager;
-        private final NotificationLite<T> on = NotificationLite.instance();
         private final Action0 onOverflow;
-        private final BackpressureOverflow.Strategy overflowStrategy;
-        
+        private final Strategy overflowStrategy;
+
         public BufferSubscriber(final Subscriber<? super T> child, Long capacity, Action0 onOverflow,
-                                BackpressureOverflow.Strategy overflowStrategy) {
+                                Strategy overflowStrategy) {
             this.child = child;
             this.capacity = capacity != null ? new AtomicLong(capacity) : null;
             this.onOverflow = onOverflow;
@@ -151,13 +147,13 @@ public class OperatorOnBackpressureBuffer<T> implements Operator<T, T> {
             if (!assertCapacity()) {
                 return;
             }
-            queue.offer(on.next(t));
+            queue.offer(NotificationLite.next(t));
             manager.drain();
         }
 
         @Override
         public boolean accept(Object value) {
-            return on.accept(child, value);
+            return NotificationLite.accept(child, value);
         }
         @Override
         public void complete(Throwable exception) {
