@@ -1,12 +1,12 @@
 /**
- * Copyright 2014 Netflix, Inc.
- * 
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,6 +18,8 @@ package io.reactivex.exceptions;
 import java.io.*;
 import java.util.*;
 
+import io.reactivex.annotations.NonNull;
+
 /**
  * Represents an exception that is a composite of one or more other exceptions. A {@code CompositeException}
  * does not modify the structure of any exception it wraps, but at print-time it iterates through the list of
@@ -25,10 +27,10 @@ import java.util.*;
  *
  * Its invariant is to contain an immutable, ordered (by insertion order), unique list of non-composite
  * exceptions. You can retrieve individual exceptions in this list with {@link #getExceptions()}.
- * 
+ *
  * The {@link #printStackTrace()} implementation handles the StackTrace in a customized way instead of using
  * {@code getCause()} so that it can avoid circular references.
- * 
+ *
  * If you invoke {@link #getCause()}, it will lazily create the causal chain but will stop if it finds any
  * Throwable in the chain that it has already seen.
  */
@@ -38,97 +40,87 @@ public final class CompositeException extends RuntimeException {
 
     private final List<Throwable> exceptions;
     private final String message;
+    private Throwable cause;
 
-    public CompositeException() {
-        this.exceptions = new ArrayList<Throwable>();
-        this.message = null;
+    /**
+     * Constructs a CompositeException with the given array of Throwables as the
+     * list of suppressed exceptions.
+     * @param exceptions the Throwables to have as initially suppressed exceptions
+     *
+     * @throws IllegalArgumentException if <code>exceptions</code> is empty.
+     */
+    public CompositeException(@NonNull Throwable... exceptions) {
+        this(exceptions == null ?
+                Collections.singletonList(new NullPointerException("exceptions was null")) : Arrays.asList(exceptions));
     }
 
-    public CompositeException(Throwable... exceptions) {
-        this.exceptions = new ArrayList<Throwable>();
-        this.message = null;
-        if (exceptions == null) {
-            this.exceptions.add(new NullPointerException("exceptions is null"));
-        } else {
-            for (Throwable t : exceptions) {
-                this.exceptions.add(t != null ? t : new NullPointerException("One of the exceptions is null"));
-            }
-        }
-    }
-    
-
-    public CompositeException(String messagePrefix, Collection<? extends Throwable> errors) {
+    /**
+     * Constructs a CompositeException with the given array of Throwables as the
+     * list of suppressed exceptions.
+     * @param errors the Throwables to have as initially suppressed exceptions
+     *
+     * @throws IllegalArgumentException if <code>errors</code> is empty.
+     */
+    public CompositeException(@NonNull Iterable<? extends Throwable> errors) {
         Set<Throwable> deDupedExceptions = new LinkedHashSet<Throwable>();
-        List<Throwable> _exceptions = new ArrayList<Throwable>();
+        List<Throwable> localExceptions = new ArrayList<Throwable>();
         if (errors != null) {
             for (Throwable ex : errors) {
                 if (ex instanceof CompositeException) {
                     deDupedExceptions.addAll(((CompositeException) ex).getExceptions());
-                } else 
+                } else
                 if (ex != null) {
                     deDupedExceptions.add(ex);
                 } else {
-                    deDupedExceptions.add(new NullPointerException());
+                    deDupedExceptions.add(new NullPointerException("Throwable was null!"));
                 }
             }
         } else {
-            deDupedExceptions.add(new NullPointerException());
+            deDupedExceptions.add(new NullPointerException("errors was null"));
         }
-
-        _exceptions.addAll(deDupedExceptions);
-        this.exceptions = Collections.unmodifiableList(_exceptions);
+        if (deDupedExceptions.isEmpty()) {
+            throw new IllegalArgumentException("errors is empty");
+        }
+        localExceptions.addAll(deDupedExceptions);
+        this.exceptions = Collections.unmodifiableList(localExceptions);
         this.message = exceptions.size() + " exceptions occurred. ";
     }
 
-    public CompositeException(Collection<? extends Throwable> errors) {
-        this(null, errors);
-    }
-
     /**
-     * Retrieves the list of exceptions that make up the {@code CompositeException}
+     * Retrieves the list of exceptions that make up the {@code CompositeException}.
      *
      * @return the exceptions that make up the {@code CompositeException}, as a {@link List} of {@link Throwable}s
      */
+    @NonNull
     public List<Throwable> getExceptions() {
         return exceptions;
     }
 
     @Override
+    @NonNull
     public String getMessage() {
         return message;
     }
 
-    /**
-     * Adds a suppressed exception to this composite.
-     * <p>The method is named this way to avoid conflicts with Java 7 environments
-     * and its addSuppressed() method.
-     * @param e the exception to suppress, nulls are converted to NullPointerExceptions
-     */
-    public void suppress(Throwable e) {
-        exceptions.add(e != null ? e : new NullPointerException("null exception"));
-    }
-    
-
-    private Throwable cause = null;
-
     @Override
-    public synchronized Throwable getCause() {
+    @NonNull
+    public synchronized Throwable getCause() { // NOPMD
         if (cause == null) {
             // we lazily generate this causal chain if this is called
-            CompositeExceptionCausalChain _cause = new CompositeExceptionCausalChain();
+            CompositeExceptionCausalChain localCause = new CompositeExceptionCausalChain();
             Set<Throwable> seenCauses = new HashSet<Throwable>();
 
-            Throwable chain = _cause;
+            Throwable chain = localCause;
             for (Throwable e : exceptions) {
                 if (seenCauses.contains(e)) {
                     // already seen this outer Throwable so skip
                     continue;
                 }
                 seenCauses.add(e);
-                
+
                 List<Throwable> listOfCauses = getListOfCauses(e);
                 // check if any of them have been seen before
-                for(Throwable child : listOfCauses) {
+                for (Throwable child : listOfCauses) {
                     if (seenCauses.contains(child)) {
                         // already seen this outer Throwable so skip
                         e = new RuntimeException("Duplicate found in causal chain so cropping to prevent loop ...");
@@ -140,14 +132,14 @@ public final class CompositeException extends RuntimeException {
                 // we now have 'e' as the last in the chain
                 try {
                     chain.initCause(e);
-                } catch (Throwable t) {
+                } catch (Throwable t) { // NOPMD
                     // ignore
-                    // the javadocs say that some Throwables (depending on how they're made) will never
+                    // the JavaDocs say that some Throwables (depending on how they're made) will never
                     // let me call initCause without blowing up even if it returns null
                 }
-                chain = chain.getCause();
+                chain = getRootCause(chain);
             }
-            cause = _cause;
+            cause = localCause;
         }
         return cause;
     }
@@ -180,59 +172,49 @@ public final class CompositeException extends RuntimeException {
     /**
      * Special handling for printing out a {@code CompositeException}.
      * Loops through all inner exceptions and prints them out.
-     * 
+     *
      * @param s
      *            stream to print to
      */
     private void printStackTrace(PrintStreamOrWriter s) {
-        StringBuilder bldr = new StringBuilder();
-        bldr.append(this).append("\n");
+        StringBuilder b = new StringBuilder(128);
+        b.append(this).append('\n');
         for (StackTraceElement myStackElement : getStackTrace()) {
-            bldr.append("\tat ").append(myStackElement).append("\n");
+            b.append("\tat ").append(myStackElement).append('\n');
         }
         int i = 1;
         for (Throwable ex : exceptions) {
-            bldr.append("  ComposedException ").append(i).append(" :").append("\n");
-            appendStackTrace(bldr, ex, "\t");
+            b.append("  ComposedException ").append(i).append(" :\n");
+            appendStackTrace(b, ex, "\t");
             i++;
         }
-        synchronized (s.lock()) {
-            s.println(bldr.toString());
-        }
+        s.println(b.toString());
     }
 
-    private void appendStackTrace(StringBuilder bldr, Throwable ex, String prefix) {
-        bldr.append(prefix).append(ex).append("\n");
+    private void appendStackTrace(StringBuilder b, Throwable ex, String prefix) {
+        b.append(prefix).append(ex).append('\n');
         for (StackTraceElement stackElement : ex.getStackTrace()) {
-            bldr.append("\t\tat ").append(stackElement).append("\n");
+            b.append("\t\tat ").append(stackElement).append('\n');
         }
         if (ex.getCause() != null) {
-            bldr.append("\tCaused by: ");
-            appendStackTrace(bldr, ex.getCause(), "");
+            b.append("\tCaused by: ");
+            appendStackTrace(b, ex.getCause(), "");
         }
     }
 
-    private abstract static class PrintStreamOrWriter {
-        /** Returns the object to be locked when using this StreamOrWriter */
-        abstract Object lock();
-
-        /** Prints the specified string as a line on this StreamOrWriter */
+    abstract static class PrintStreamOrWriter {
+        /** Prints the specified string as a line on this StreamOrWriter. */
         abstract void println(Object o);
     }
 
     /**
-     * Same abstraction and implementation as in JDK to allow PrintStream and PrintWriter to share implementation
+     * Same abstraction and implementation as in JDK to allow PrintStream and PrintWriter to share implementation.
      */
-    private static class WrappedPrintStream extends PrintStreamOrWriter {
+    static final class WrappedPrintStream extends PrintStreamOrWriter {
         private final PrintStream printStream;
 
         WrappedPrintStream(PrintStream printStream) {
             this.printStream = printStream;
-        }
-
-        @Override
-        Object lock() {
-            return printStream;
         }
 
         @Override
@@ -241,16 +223,11 @@ public final class CompositeException extends RuntimeException {
         }
     }
 
-    private static class WrappedPrintWriter extends PrintStreamOrWriter {
+    static final class WrappedPrintWriter extends PrintStreamOrWriter {
         private final PrintWriter printWriter;
 
         WrappedPrintWriter(PrintWriter printWriter) {
             this.printWriter = printWriter;
-        }
-
-        @Override
-        Object lock() {
-            return printWriter;
         }
 
         @Override
@@ -259,9 +236,9 @@ public final class CompositeException extends RuntimeException {
         }
     }
 
-    /* package-private */final static class CompositeExceptionCausalChain extends RuntimeException {
+    static final class CompositeExceptionCausalChain extends RuntimeException {
         private static final long serialVersionUID = 3875212506787802066L;
-        /* package-private */static String MESSAGE = "Chain of Causes for CompositeException In Order Received =>";
+        /* package-private */static final String MESSAGE = "Chain of Causes for CompositeException In Order Received =>";
 
         @Override
         public String getMessage() {
@@ -272,30 +249,46 @@ public final class CompositeException extends RuntimeException {
     private List<Throwable> getListOfCauses(Throwable ex) {
         List<Throwable> list = new ArrayList<Throwable>();
         Throwable root = ex.getCause();
-        if (root == null) {
+        if (root == null || root == ex) {
             return list;
         } else {
-            while(true) {
+            while (true) {
                 list.add(root);
-                if (root.getCause() == null) {
+                Throwable cause = root.getCause();
+                if (cause == null || cause == root) {
                     return list;
                 } else {
-                    root = root.getCause();
+                    root = cause;
                 }
             }
         }
     }
+
+    /**
+     * Returns the number of suppressed exceptions.
+     * @return the number of suppressed exceptions
+     */
     public int size() {
         return exceptions.size();
     }
 
     /**
-     * Returns true if this CompositeException doesn't have a cause or
-     * any suppressed exceptions.
-     * @return true if this CompositeException doesn't have a cause or
-     * any suppressed exceptions.
+     * Returns the root cause of {@code e}. If {@code e.getCause()} returns {@code null} or {@code e}, just return {@code e} itself.
+     *
+     * @param e the {@link Throwable} {@code e}.
+     * @return The root cause of {@code e}. If {@code e.getCause()} returns {@code null} or {@code e}, just return {@code e} itself.
      */
-    public boolean isEmpty() {
-        return exceptions.isEmpty() && getCause() == null;
+    /*private */Throwable getRootCause(Throwable e) {
+        Throwable root = e.getCause();
+        if (root == null || e == root) {
+            return e;
+        }
+        while (true) {
+            Throwable cause = root.getCause();
+            if (cause == null || cause == root) {
+                return root;
+            }
+            root = cause;
+        }
     }
 }

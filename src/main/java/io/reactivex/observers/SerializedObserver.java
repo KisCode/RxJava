@@ -1,11 +1,11 @@
 /**
- * Copyright 2016 Netflix, Inc.
- * 
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software distributed under the License is
  * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
  * the License for the specific language governing permissions and limitations under the License.
@@ -13,61 +13,83 @@
 package io.reactivex.observers;
 
 import io.reactivex.Observer;
+import io.reactivex.annotations.*;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.functions.Predicate;
-import io.reactivex.internal.subscriptions.SubscriptionHelper;
+import io.reactivex.internal.disposables.DisposableHelper;
 import io.reactivex.internal.util.*;
 import io.reactivex.plugins.RxJavaPlugins;
 
 /**
- * Serializes access to the onNext, onError and onComplete methods of another Subscriber.
- * 
- * <p>Note that onSubscribe is not serialized in respect of the other methods so
- * make sure the Subscription is set before any of the other methods are called.
- * 
- * <p>The implementation assumes that the actual Subscriber's methods don't throw.
- * 
+ * Serializes access to the onNext, onError and onComplete methods of another Observer.
+ *
+ * <p>Note that {@link #onSubscribe(Disposable)} is not serialized in respect of the other methods so
+ * make sure the {@code onSubscribe()} is called with a non-null {@code Disposable}
+ * before any of the other methods are called.
+ *
+ * <p>The implementation assumes that the actual Observer's methods don't throw.
+ *
  * @param <T> the value type
  */
-public final class SerializedObserver<T> implements Observer<T> {
-    final Observer<? super T> actual;
+public final class SerializedObserver<T> implements Observer<T>, Disposable {
+    final Observer<? super T> downstream;
     final boolean delayError;
-    
+
     static final int QUEUE_LINK_SIZE = 4;
-    
-    Disposable subscription;
-    
+
+    Disposable upstream;
+
     boolean emitting;
     AppendOnlyLinkedArrayList<Object> queue;
-    
+
     volatile boolean done;
-    
-    public SerializedObserver(Observer<? super T> actual) {
-        this(actual, false);
+
+    /**
+     * Construct a SerializedObserver by wrapping the given actual Observer.
+     * @param downstream the actual Observer, not null (not verified)
+     */
+    public SerializedObserver(@NonNull Observer<? super T> downstream) {
+        this(downstream, false);
     }
-    
-    public SerializedObserver(Observer<? super T> actual, boolean delayError) {
-        this.actual = actual;
+
+    /**
+     * Construct a SerializedObserver by wrapping the given actual Observer and
+     * optionally delaying the errors till all regular values have been emitted
+     * from the internal buffer.
+     * @param actual the actual Observer, not null (not verified)
+     * @param delayError if true, errors are emitted after regular values have been emitted
+     */
+    public SerializedObserver(@NonNull Observer<? super T> actual, boolean delayError) {
+        this.downstream = actual;
         this.delayError = delayError;
     }
+
     @Override
-    public void onSubscribe(Disposable s) {
-        if (SubscriptionHelper.validateDisposable(this.subscription, s)) {
-            return;
+    public void onSubscribe(@NonNull Disposable d) {
+        if (DisposableHelper.validate(this.upstream, d)) {
+            this.upstream = d;
+
+            downstream.onSubscribe(this);
         }
-        this.subscription = s;
-        
-        actual.onSubscribe(s);
     }
-    
+
     @Override
-    public void onNext(T t) {
+    public void dispose() {
+        upstream.dispose();
+    }
+
+    @Override
+    public boolean isDisposed() {
+        return upstream.isDisposed();
+    }
+
+    @Override
+    public void onNext(@NonNull T t) {
         if (done) {
             return;
         }
         if (t == null) {
-            subscription.dispose();
-            onError(new NullPointerException());
+            upstream.dispose();
+            onError(new NullPointerException("onNext called with null. Null values are generally not allowed in 2.x operators and sources."));
             return;
         }
         synchronized (this) {
@@ -85,14 +107,14 @@ public final class SerializedObserver<T> implements Observer<T> {
             }
             emitting = true;
         }
-        
-        actual.onNext(t);
-        
+
+        downstream.onNext(t);
+
         emitLoop();
     }
-    
+
     @Override
-    public void onError(Throwable t) {
+    public void onError(@NonNull Throwable t) {
         if (done) {
             RxJavaPlugins.onError(t);
             return;
@@ -122,16 +144,16 @@ public final class SerializedObserver<T> implements Observer<T> {
                 reportError = false;
             }
         }
-        
+
         if (reportError) {
             RxJavaPlugins.onError(t);
             return;
         }
-        
-        actual.onError(t);
+
+        downstream.onError(t);
         // no need to loop because this onError is the last event
     }
-    
+
     @Override
     public void onComplete() {
         if (done) {
@@ -153,11 +175,11 @@ public final class SerializedObserver<T> implements Observer<T> {
             done = true;
             emitting = true;
         }
-        
-        actual.onComplete();
+
+        downstream.onComplete();
         // no need to loop because this onComplete is the last event
     }
-    
+
     void emitLoop() {
         for (;;) {
             AppendOnlyLinkedArrayList<Object> q;
@@ -169,29 +191,10 @@ public final class SerializedObserver<T> implements Observer<T> {
                 }
                 queue = null;
             }
-            
-            q.forEachWhile(consumer);
-        }
-    }
-    
-    final Predicate<Object> consumer = new Predicate<Object>() {
-        @Override
-        public boolean test(Object v) {
-            return accept(v);
-        }
-    };
 
-    
-    boolean accept(Object value) {
-        if (NotificationLite.isComplete(value)) {
-            actual.onComplete();
-            return true;
-        } else
-        if (NotificationLite.isError(value)) {
-            actual.onError(NotificationLite.getError(value));
-            return true;
+            if (q.accept(downstream)) {
+                return;
+            }
         }
-        actual.onNext(NotificationLite.<T>getValue(value));
-        return false;
     }
 }

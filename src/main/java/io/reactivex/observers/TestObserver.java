@@ -1,161 +1,189 @@
 /**
- * Copyright 2016 Netflix, Inc.
- * 
+ * Copyright (c) 2016-present, RxJava Contributors.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software distributed under the License is
  * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
  * the License for the specific language governing permissions and limitations under the License.
  */
 package io.reactivex.observers;
 
-import java.util.*;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import io.reactivex.Notification;
-import io.reactivex.Observer;
+import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.exceptions.CompositeException;
-import io.reactivex.internal.functions.Objects;
-import io.reactivex.internal.subscribers.observable.NbpEmptySubscriber;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.disposables.DisposableHelper;
+import io.reactivex.internal.fuseable.*;
+import io.reactivex.internal.util.ExceptionHelper;
 
 /**
- * A subscriber that records events and allows making assertions about them.
+ * An Observer that records events and allows making assertions about them.
  *
- * <p>You can override the onSubscribe, onNext, onError, onComplete, request and
- * cancel methods but not the others (this is by desing).
- * 
- * <p>The TestSubscriber implements Disposable for convenience where dispose calls cancel.
- * 
- * <p>When calling the default request method, you are requesting on behalf of the
- * wrapped actual subscriber.
- * 
+ * <p>You can override the onSubscribe, onNext, onError, onComplete, onSuccess and
+ * cancel methods but not the others (this is by design).
+ *
+ * <p>The TestObserver implements Disposable for convenience where dispose calls cancel.
+ *
  * @param <T> the value type
  */
-public class TestObserver<T> implements Observer<T>, Disposable {
-    /** The actual subscriber to forward events to. */
-    private final Observer<? super T> actual;
-    /** The latch that indicates an onError or onCompleted has been called. */
-    private final CountDownLatch done;
-    /** The list of values received. */
-    private final List<T> values;
-    /** The list of errors received. */
-    private final List<Throwable> errors;
-    /** The number of completions. */
-    private long completions;
-    /** The last thread seen by the subscriber. */
-    private Thread lastThread;
-    
-    /** Makes sure the incoming Subscriptions get cancelled immediately. */
-    private volatile boolean cancelled;
+public class TestObserver<T>
+extends BaseTestConsumer<T, TestObserver<T>>
+implements Observer<T>, Disposable, MaybeObserver<T>, SingleObserver<T>, CompletableObserver {
+    /** The actual observer to forward events to. */
+    private final Observer<? super T> downstream;
 
     /** Holds the current subscription if any. */
-    private final AtomicReference<Disposable> subscription = new AtomicReference<Disposable>();
-    
-    /** Indicates a cancelled subscription. */
-    private static final Disposable CANCELLED = new Disposable() {
-        @Override
-        public void dispose() { }
-    };
+    private final AtomicReference<Disposable> upstream = new AtomicReference<Disposable>();
 
-    private boolean checkSubscriptionOnce;
+    private QueueDisposable<T> qd;
 
     /**
-     * Constructs a non-forwarding TestSubscriber with an initial request value of Long.MAX_VALUE.
+     * Constructs a non-forwarding TestObserver.
+     * @param <T> the value type received
+     * @return the new TestObserver instance
+     */
+    public static <T> TestObserver<T> create() {
+        return new TestObserver<T>();
+    }
+
+    /**
+     * Constructs a forwarding TestObserver.
+     * @param <T> the value type received
+     * @param delegate the actual Observer to forward events to
+     * @return the new TestObserver instance
+     */
+    public static <T> TestObserver<T> create(Observer<? super T> delegate) {
+        return new TestObserver<T>(delegate);
+    }
+
+    /**
+     * Constructs a non-forwarding TestObserver.
      */
     public TestObserver() {
-        this(NbpEmptySubscriber.INSTANCE_NOERROR);
+        this(EmptyObserver.INSTANCE);
     }
 
     /**
-     * Constructs a forwarding TestSubscriber but leaves the requesting to the wrapped subscriber.
-     * @param actual the actual Subscriber to forward events to
+     * Constructs a forwarding TestObserver.
+     * @param downstream the actual Observer to forward events to
      */
-    public TestObserver(Observer<? super T> actual) {
-        this.actual = actual;
-        this.values = new ArrayList<T>();
-        this.errors = new ArrayList<Throwable>();
-        this.done = new CountDownLatch(1);
+    public TestObserver(Observer<? super T> downstream) {
+        this.downstream = downstream;
     }
-    
+
+    @SuppressWarnings("unchecked")
     @Override
-    public void onSubscribe(Disposable s) {
+    public void onSubscribe(Disposable d) {
         lastThread = Thread.currentThread();
-        
-        if (s == null) {
+
+        if (d == null) {
             errors.add(new NullPointerException("onSubscribe received a null Subscription"));
             return;
         }
-        if (!subscription.compareAndSet(null, s)) {
-            s.dispose();
-            if (subscription.get() != CANCELLED) {
-                errors.add(new NullPointerException("onSubscribe received multiple subscriptions: " + s));
+        if (!upstream.compareAndSet(null, d)) {
+            d.dispose();
+            if (upstream.get() != DisposableHelper.DISPOSED) {
+                errors.add(new IllegalStateException("onSubscribe received multiple subscriptions: " + d));
             }
             return;
         }
-        
-        if (cancelled) {
-            s.dispose();
+
+        if (initialFusionMode != 0) {
+            if (d instanceof QueueDisposable) {
+                qd = (QueueDisposable<T>)d;
+
+                int m = qd.requestFusion(initialFusionMode);
+                establishedFusionMode = m;
+
+                if (m == QueueDisposable.SYNC) {
+                    checkSubscriptionOnce = true;
+                    lastThread = Thread.currentThread();
+                    try {
+                        T t;
+                        while ((t = qd.poll()) != null) {
+                            values.add(t);
+                        }
+                        completions++;
+
+                        upstream.lazySet(DisposableHelper.DISPOSED);
+                    } catch (Throwable ex) {
+                        // Exceptions.throwIfFatal(e); TODO add fatal exceptions?
+                        errors.add(ex);
+                    }
+                    return;
+                }
+            }
         }
-        
-        actual.onSubscribe(s);
-        
-        if (cancelled) {
-            return;
-        }
+
+        downstream.onSubscribe(d);
     }
-    
+
     @Override
     public void onNext(T t) {
         if (!checkSubscriptionOnce) {
             checkSubscriptionOnce = true;
-            if (subscription.get() == null) {
+            if (upstream.get() == null) {
                 errors.add(new IllegalStateException("onSubscribe not called in proper order"));
             }
         }
 
         lastThread = Thread.currentThread();
-        values.add(t);
-        
-        if (t == null) {
-            errors.add(new NullPointerException("onNext received a null Subscription"));
+
+        if (establishedFusionMode == QueueDisposable.ASYNC) {
+            try {
+                while ((t = qd.poll()) != null) {
+                    values.add(t);
+                }
+            } catch (Throwable ex) {
+                // Exceptions.throwIfFatal(e); TODO add fatal exceptions?
+                errors.add(ex);
+                qd.dispose();
+            }
+            return;
         }
-        
-        actual.onNext(t);
+
+        values.add(t);
+
+        if (t == null) {
+            errors.add(new NullPointerException("onNext received a null value"));
+        }
+
+        downstream.onNext(t);
     }
-    
+
     @Override
     public void onError(Throwable t) {
         if (!checkSubscriptionOnce) {
             checkSubscriptionOnce = true;
-            if (subscription.get() == null) {
+            if (upstream.get() == null) {
                 errors.add(new IllegalStateException("onSubscribe not called in proper order"));
             }
         }
 
         try {
             lastThread = Thread.currentThread();
-            errors.add(t);
-
             if (t == null) {
-                errors.add(new NullPointerException("onError received a null Subscription"));
+                errors.add(new NullPointerException("onError received a null Throwable"));
+            } else {
+                errors.add(t);
             }
 
-            actual.onError(t);
+            downstream.onError(t);
         } finally {
             done.countDown();
         }
     }
-    
+
     @Override
     public void onComplete() {
         if (!checkSubscriptionOnce) {
             checkSubscriptionOnce = true;
-            if (subscription.get() == null) {
+            if (upstream.get() == null) {
                 errors.add(new IllegalStateException("onSubscribe not called in proper order"));
             }
         }
@@ -163,535 +191,183 @@ public class TestObserver<T> implements Observer<T>, Disposable {
         try {
             lastThread = Thread.currentThread();
             completions++;
-            
-            actual.onComplete();
+
+            downstream.onComplete();
         } finally {
             done.countDown();
         }
     }
-    
+
     /**
-     * Returns true if this TestSubscriber has been cancelled.
-     * @return true if this TestSubscriber has been cancelled
+     * Returns true if this TestObserver has been cancelled.
+     * @return true if this TestObserver has been cancelled
      */
     public final boolean isCancelled() {
-        return cancelled;
+        return isDisposed();
     }
-    
+
+    /**
+     * Cancels the TestObserver (before or after the subscription happened).
+     * <p>This operation is thread-safe.
+     * <p>This method is provided as a convenience when converting Flowable tests that cancel.
+     */
+    public final void cancel() {
+        dispose();
+    }
+
     @Override
     public final void dispose() {
-        if (!cancelled) {
-            cancelled = true;
-            Disposable s = subscription.get();
-            if (s != CANCELLED) {
-                s = subscription.getAndSet(CANCELLED);
-                if (s != CANCELLED && s != null) {
-                    s.dispose();
-                }
-            }
-        }
+        DisposableHelper.dispose(upstream);
     }
-    
+
+    @Override
+    public final boolean isDisposed() {
+        return DisposableHelper.isDisposed(upstream.get());
+    }
+
     // state retrieval methods
-    
     /**
-     * Returns the last thread which called the onXXX methods of this TestSubscriber.
-     * @return the last thread which called the onXXX methods
-     */
-    public final Thread lastThread() {
-        return lastThread;
-    }
-    
-    /**
-     * Returns a shared list of received onNext values.
-     * @return a list of received onNext values
-     */
-    public final List<T> values() {
-        return values;
-    }
-    
-    /**
-     * Returns a shared list of received onError exceptions.
-     * @return a list of received events onError exceptions
-     */
-    public final List<Throwable> errors() {
-        return errors;
-    }
-    
-    /**
-     * Returns the number of times onComplete was called.
-     * @return the number of times onComplete was called
-     */
-    public final long completions() {
-        return completions;
-    }
-
-    /**
-     * Returns true if TestSubscriber received any onError or onComplete events.
-     * @return true if TestSubscriber received any onError or onComplete events
-     */
-    public final boolean isTerminated() {
-        return done.getCount() == 0;
-    }
-    
-    /**
-     * Returns the number of onNext values received.
-     * @return the number of onNext values received
-     */
-    public final int valueCount() {
-        return values.size();
-    }
-    
-    /**
-     * Returns the number of onError exceptions received.
-     * @return the number of onError exceptions received
-     */
-    public final int errorCount() {
-        return errors.size();
-    }
-
-    /**
-     * Returns true if this TestSubscriber received a subscription.
-     * @return true if this TestSubscriber received a subscription
+     * Returns true if this TestObserver received a subscription.
+     * @return true if this TestObserver received a subscription
      */
     public final boolean hasSubscription() {
-        return subscription != null;
+        return upstream.get() != null;
     }
-    
-    /**
-     * Awaits until this TestSubscriber receives an onError or onComplete events.
-     * @throws InterruptedException if the current thread is interrupted while waiting
-     * @see #awaitTerminalEvent()
-     */
-    public final void await() throws InterruptedException {
-        if (done.getCount() == 0) {
-            return;
-        }
-        
-        done.await();
-    }
-    
-    /**
-     * Awaits the specified amount of time or until this TestSubscriber 
-     * receives an onError or onComplete events, whichever happens first.
-     * @param time the waiting time
-     * @param unit the time unit of the waiting time
-     * @return true if the TestSubscriber terminated, false if timeout happened
-     * @throws InterruptedException if the current thread is interrupted while waiting
-     * @see #awaitTerminalEvent(long, TimeUnit)
-     */
-    public final boolean await(long time, TimeUnit unit) throws InterruptedException {
-        if (done.getCount() == 0) {
-            return true;
-        }
-        return done.await(time, unit);
-    }
-    
-    // assertion methods
-    
-    /**
-     * Fail with the given message and add the sequence of errors as suppressed ones.
-     * <p>Note this is delibarately the only fail method. Most of the times an assertion
-     * would fail but it is possible it was due to an exception somewhere. This construct
-     * will capture those potential errors and report it along with the original failure.
-     * 
-     * @param message the message to use
-     * @param errors the sequence of errors to add as suppressed exception
-     */
-    private void fail(String prefix, String message, Iterable<? extends Throwable> errors) {
-        AssertionError ae = new AssertionError(prefix + message);
-        CompositeException ce = new CompositeException();
-        for (Throwable e : errors) {
-            if (e == null) {
-                ce.suppress(new NullPointerException("Throwable was null!"));
-            } else {
-                ce.suppress(e);
-            }
-        };
-        if (!ce.isEmpty()) {
-            ae.initCause(ce);
-        }
-        throw ae;
-    }
-    
-    /**
-     * Assert that this TestSubscriber received exactly one onComplete event.
-     */
-    public void assertComplete() {
-        String prefix = "";
-        /*
-         * This creates a happens-before relation with the possible completion of the TestSubscriber.
-         * Don't move it after the instance reads or into fail()!
-         */
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        long c = completions;
-        if (c == 0) {
-            fail(prefix, "Not completed", errors);
-        } else
-        if (c > 1) {
-            fail(prefix, "Multiple completions: " + c, errors);
-        }
-    }
-    
-    /**
-     * Assert that this TestSubscriber has not received any onComplete event.
-     */
-    public void assertNotComplete() {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        long c = completions;
-        if (c == 1) {
-            fail(prefix, "Completed!", errors);
-        } else 
-        if (c > 1) {
-            fail(prefix, "Multiple completions: " + c, errors);
-        }
-    }
-    
-    /**
-     * Assert that this TestSubscriber has not received any onError event.
-     */
-    public void assertNoErrors() {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = errors.size();
-        if (s != 0) {
-            fail(prefix, "Error(s) present: " + errors, errors);
-        }
-    }
-    
-    /**
-     * Assert that this TestSubscriber received exactly the specified onError event value.
-     * 
-     * <p>The comparison is performed via Objects.equals(); since most exceptions don't
-     * implement equals(), this assertion may fail. Use the {@link #assertError(Class)}
-     * overload to test against the class of an error instead of an instance of an error.
-     * @param error the error to check
-     * @see #assertError(Class)
-     */
-    public void assertError(Throwable error) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = errors.size();
-        if (s == 0) {
-            fail(prefix, "No errors", Collections.<Throwable>emptyList());
-        }
-        if (errors.contains(error)) {
-            if (s != 1) {
-                fail(prefix, "Error present but other errors as well", errors);
-            }
-        } else {
-            fail(prefix, "Error not present", errors);
-        }
-    }
-    
-    /**
-     * Asserts that this TestSubscriber received exactly one onError event which is an
-     * instance of the specified errorClass class.
-     * @param errorClass the error class to expect
-     */
-    public void assertError(Class<? extends Throwable> errorClass) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = errors.size();
-        if (s == 0) {
-            fail(prefix, "No errors", Collections.<Throwable>emptyList());
-        }
-        
-        boolean found = false;
-        
-        for (Throwable e : errors) {
-            if (errorClass.isInstance(e)) {
-                found = true;
-                break;
-            }
-        }
-        
-        if (found) {
-            if (s != 1) {
-                fail(prefix, "Error present but other errors as well", errors);
-            }
-        } else {
-            fail(prefix, "Error not present", errors);
-        }
-    }
-    
-    /**
-     * Assert that this TestSubscriber received exactly one onNext value which is equal to
-     * the given value with respect to Objects.equals.
-     * @param value the value to expect
-     */
-    public final void assertValue(T value) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = values.size();
-        if (s != 1) {
-            fail(prefix, "Expected: " + valueAndClass(value) + ", Actual: " + values, errors);
-        }
-        T v = values.get(0);
-        if (!Objects.equals(value, v)) {
-            fail(prefix, "Expected: " + valueAndClass(value) + ", Actual: " + valueAndClass(v), errors);
-        }
-    }
-    
-    /** Appends the class name to a non-null value. */
-    static String valueAndClass(Object o) {
-        if (o != null) {
-            return o + " (class: " + o.getClass().getSimpleName() + ")";
-        }
-        return "null";
-    }
-    
-    /**
-     * Assert that this TestSubscriber received the specified number onNext events.
-     * @param count the expected number of onNext events
-     */
-    public final void assertValueCount(int count) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = values.size();
-        if (s != count) {
-            fail(prefix, "Value counts differ; Expected: " + count + ", Actual: " + s, errors);
-        }
-    }
-    
-    /**
-     * Assert that this TestSubscriber has not received any onNext events.
-     */
-    public final void assertNoValues() {
-        assertValueCount(0);
-    }
-    
-    /**
-     * Assert that the TestSubscriber received only the specified values in the specified order.
-     * @param values the values expected
-     * @see #assertValueSet(Collection)
-     */
-    public final void assertValues(T... values) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = this.values.size();
-        if (s != values.length) {
-            fail(prefix, "Value count differs; Expected: " + values.length + " " + Arrays.toString(values)
-            + ", Actual: " + s + " " + this.values, errors);
-        }
-        for (int i = 0; i < s; i++) {
-            T v = this.values.get(i);
-            T u = values[i];
-            if (!Objects.equals(u, v)) {
-                fail(prefix, "Values at position " + i + " differ; Expected: " + valueAndClass(u) + ", Actual: " + valueAndClass(v), errors);
-            }
-        }
-    }
-    
-    /**
-     * Assert that the TestSubscriber received only the specified values in any order.
-     * <p>This helps asserting when the order of the values is not guaranteed, i.e., when merging
-     * asynchronous streams.
-     * 
-     * @param values the collection of values expected in any order
-     */
-    public final void assertValueSet(Collection<? extends T> values) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = this.values.size();
-        if (s != values.size()) {
-            fail(prefix, "Value count differs; Expected: " + values.size() + " " + values
-            + ", Actual: " + s + " " + this.values, errors);
-        }
-        for (int i = 0; i < s; i++) {
-            T v = this.values.get(i);
-            
-            if (!values.contains(v)) {
-                fail(prefix, "Value not in the expected collection: " + valueAndClass(v), errors);
-            }
-        }
-    }
-    
-    /**
-     * Assert that the TestSubscriber received only the specified sequence of values in the same order.
-     * @param sequence the sequence of expected values in order
-     */
-    public final void assertValueSequence(Iterable<? extends T> sequence) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int i = 0;
-        Iterator<T> vit = values.iterator();
-        Iterator<? extends T> it = sequence.iterator();
-        boolean itNext = false;
-        boolean vitNext = false;
-        while ((itNext = it.hasNext()) && (vitNext = vit.hasNext())) {
-            T v = it.next();
-            T u = vit.next();
-            
-            if (!Objects.equals(u, v)) {
-                fail(prefix, "Values at position " + i + " differ; Expected: " + valueAndClass(u) + ", Actual: " + valueAndClass(v), errors);
-            }
-            i++;
-        }
-        
-        if (itNext && !vitNext) {
-            fail(prefix, "More values received than expected (" + i + ")", errors);
-        }
-        if (!itNext && !vitNext) {
-            fail(prefix, "Fever values received than expected (" + i + ")", errors);
-        }
-    }
-    
-    /**
-     * Assert that the TestSubscriber terminated (i.e., the terminal latch reached zero).
-     */
-    public final void assertTerminated() {
-        if (done.getCount() != 0) {
-            fail("", "Subscriber still running!", errors);
-        }
-        long c = completions;
-        if (c > 1) {
-            fail("", "Terminated with multiple completions: " + c, errors);
-        }
-        int s = errors.size();
-        if (s > 1) {
-            fail("", "Terminated with multiple errors: " + s, errors);
-        }
-        
-        if (c != 0 && s != 0) {
-            fail("", "Terminated with multiple completions and errors: " + c, errors);
-        }
-    }
-    
-    /**
-     * Assert that the TestSubscriber has not terminated (i.e., the terminal latch is still non-zero).
-     */
-    public final void assertNotTerminated() {
-        if (done.getCount() == 0) {
-            fail("", "Subscriber terminated!", errors);
-        }
-    }
-    
+
     /**
      * Assert that the onSubscribe method was called exactly once.
+     * @return this;
      */
-    public final void assertSubscribed() {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
+    @Override
+    public final TestObserver<T> assertSubscribed() {
+        if (upstream.get() == null) {
+            throw fail("Not subscribed!");
         }
-        if (subscription == null) {
-            fail(prefix, "Not subscribed!", errors);
-        }
+        return this;
     }
-    
+
     /**
      * Assert that the onSubscribe method hasn't been called at all.
+     * @return this;
      */
-    public final void assertNotSubscribed() {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        if (subscription != null) {
-            fail(prefix, "Subscribed!", errors);
+    @Override
+    public final TestObserver<T> assertNotSubscribed() {
+        if (upstream.get() != null) {
+            throw fail("Subscribed!");
         } else
         if (!errors.isEmpty()) {
-            fail(prefix, "Not subscribed but errors found", errors);
+            throw fail("Not subscribed but errors found");
         }
+        return this;
     }
-    
+
     /**
-     * Waits until the any terminal event has been received by this TestSubscriber
-     * or returns false if the wait has been interrupted.
-     * @return true if the TestSubscriber terminated, false if the wait has been interrupted
+     * Run a check consumer with this TestObserver instance.
+     * @param check the check consumer to run
+     * @return this
      */
-    public boolean awaitTerminalEvent() {
+    public final TestObserver<T> assertOf(Consumer<? super TestObserver<T>> check) {
         try {
-            await();
-            return true;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            return false;
+            check.accept(this);
+        } catch (Throwable ex) {
+            throw ExceptionHelper.wrapOrThrow(ex);
         }
+        return this;
     }
-    
+
     /**
-     * Awaits the specified amount of time or until this TestSubscriber 
-     * receives an onError or onComplete events, whichever happens first.
-     * @param duration the waiting time
-     * @param unit the time unit of the waiting time
-     * @return true if the TestSubscriber terminated, false if timeout or interrupt happened
+     * Sets the initial fusion mode if the upstream supports fusion.
+     * <p>Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @param mode the mode to establish, see the {@link QueueDisposable} constants
+     * @return this
      */
-    public boolean awaitTerminalEvent(long duration, TimeUnit unit) {
-        try {
-            return await(duration, unit);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
+    final TestObserver<T> setInitialFusionMode(int mode) {
+        this.initialFusionMode = mode;
+        return this;
     }
-    
-    public void assertErrorMessage(String message) {
-        String prefix = "";
-        if (done.getCount() != 0) {
-            prefix = "Subscriber still running! ";
-        }
-        int s = errors.size();
-        if (s == 0) {
-            fail(prefix, "No errors", Collections.<Throwable>emptyList());
-        } else
-        if (s == 1) {
-            Throwable e = errors.get(0);
-            if (e == null) {
-                fail(prefix, "Error is null", Collections.<Throwable>emptyList());
-            }
-            String errorMessage = e.getMessage();
-            if (!Objects.equals(message, errorMessage)) {
-                fail(prefix, "Error message differs; Expected: " + message + ", Actual: " + errorMessage, Collections.singletonList(e));
-            }
-        } else {
-            fail(prefix, "Multiple errors", errors);
-        }
-    }
-    
+
     /**
-     * Returns a list of 3 other lists: the first inner list contains the plain
-     * values received; the second list contains the potential errors
-     * and the final list contains the potential completions as Notifications.
-     * 
-     * @return a list of (values, errors, completion-notifications)
+     * Asserts that the given fusion mode has been established
+     * <p>Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @param mode the expected mode
+     * @return this
      */
-    @SuppressWarnings({ "rawtypes", "unchecked" })
-    public List<List<Object>> getEvents() {
-        List<List<Object>> result = new ArrayList<List<Object>>();
-        
-        result.add((List)values());
-        
-        result.add((List)errors());
-        
-        List<Object> completeList = new ArrayList<Object>();
-        for (long i = 0; i < completions; i++) {
-            completeList.add(Notification.complete());
+    final TestObserver<T> assertFusionMode(int mode) {
+        int m = establishedFusionMode;
+        if (m != mode) {
+            if (qd != null) {
+                throw new AssertionError("Fusion mode different. Expected: " + fusionModeToString(mode)
+                + ", actual: " + fusionModeToString(m));
+            } else {
+                throw fail("Upstream is not fuseable");
+            }
         }
-        result.add(completeList);
-        
-        return result;
+        return this;
+    }
+
+    static String fusionModeToString(int mode) {
+        switch (mode) {
+        case QueueFuseable.NONE : return "NONE";
+        case QueueFuseable.SYNC : return "SYNC";
+        case QueueFuseable.ASYNC : return "ASYNC";
+        default: return "Unknown(" + mode + ")";
+        }
+    }
+
+    /**
+     * Assert that the upstream is a fuseable source.
+     * <p>Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @return this
+     */
+    final TestObserver<T> assertFuseable() {
+        if (qd == null) {
+            throw new AssertionError("Upstream is not fuseable.");
+        }
+        return this;
+    }
+
+    /**
+     * Assert that the upstream is not a fuseable source.
+     * <p>Package-private: avoid leaking the now internal fusion properties into the public API.
+     * Use ObserverFusion to work with such tests.
+     * @return this
+     */
+    final TestObserver<T> assertNotFuseable() {
+        if (qd != null) {
+            throw new AssertionError("Upstream is fuseable.");
+        }
+        return this;
+    }
+
+    @Override
+    public void onSuccess(T value) {
+        onNext(value);
+        onComplete();
+    }
+
+    /**
+     * An observer that ignores all events and does not report errors.
+     */
+    enum EmptyObserver implements Observer<Object> {
+        INSTANCE;
+
+        @Override
+        public void onSubscribe(Disposable d) {
+        }
+
+        @Override
+        public void onNext(Object t) {
+        }
+
+        @Override
+        public void onError(Throwable t) {
+        }
+
+        @Override
+        public void onComplete() {
+        }
     }
 }
